@@ -1,0 +1,87 @@
+const {
+  encode,
+  decode,
+  getNeighbors,
+  reconstructPath,
+  validateGridInput,
+} = require('./grid');
+
+/**
+ * Breadth-First Search.
+ *
+ * Finds the shortest path on an unweighted grid (every move costs 1).
+ * Guaranteed shortest path in terms of number of steps, but ignores
+ * weighted cells (treats every walkable cell as cost 1).
+ *
+ * @param {number[][]} grid
+ * @param {{row:number, col:number}} start
+ * @param {{row:number, col:number}} end
+ * @param {object} [options]
+ * @param {boolean} [options.allowDiagonal=false]
+ * @param {boolean} [options.recordSteps=true]
+ *
+ * @returns {{
+ *   path: {row:number, col:number}[],
+ *   visitedOrder: {row:number, col:number}[],
+ *   cost: number,
+ *   found: boolean,
+ *   nodesExplored: number,
+ * }}
+ */
+function bfs(grid, start, end, options = {}) {
+  validateGridInput(grid, start, end);
+
+  const { allowDiagonal = false, recordSteps = true } = options;
+  const cols = grid[0].length;
+
+  const startKey = encode(start.row, start.col, cols);
+  const endKey = encode(end.row, end.col, cols);
+
+  const visited = new Set([startKey]);
+  const cameFrom = new Map();
+  const visitedOrder = [];
+  const queue = [startKey];
+  let head = 0;
+
+  let nodesExplored = 0;
+
+  while (head < queue.length) {
+    const currentKey = queue[head++];
+    nodesExplored++;
+
+    const current = decode(currentKey, cols);
+    if (recordSteps) visitedOrder.push(current);
+
+    if (currentKey === endKey) {
+      const path = reconstructPath(cameFrom, endKey, cols);
+      return {
+        path,
+        visitedOrder,
+        cost: path.length - 1,
+        found: true,
+        nodesExplored,
+      };
+    }
+
+    const neighbors = getNeighbors(grid, current.row, current.col, allowDiagonal);
+
+    for (const neighbor of neighbors) {
+      const neighborKey = encode(neighbor.row, neighbor.col, cols);
+      if (visited.has(neighborKey)) continue;
+
+      visited.add(neighborKey);
+      cameFrom.set(neighborKey, currentKey);
+      queue.push(neighborKey);
+    }
+  }
+
+  return {
+    path: [],
+    visitedOrder,
+    cost: Infinity,
+    found: false,
+    nodesExplored,
+  };
+}
+
+module.exports = bfs;
