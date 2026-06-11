@@ -1,0 +1,58 @@
+/**
+ * Randomized Prim's Maze Generator.
+ *
+ * Produces a perfect maze with a different texture than recursive
+ * backtracker — tends to create many short dead-ends (more branchy).
+ */
+function primsAlgorithm(rows, cols, opts = {}) {
+  const r = rows % 2 === 0 ? rows - 1 : rows;
+  const c = cols % 2 === 0 ? cols - 1 : cols;
+
+  const grid = Array.from({ length: r }, () => new Array(c).fill(1));
+
+  let seed = opts.seed ?? Date.now();
+  const rand = (n) => {
+    seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+    return ((seed >>> 0) % n);
+  };
+
+  // Start carving from (0,0)
+  grid[0][0] = 0;
+
+  const walls = [];
+  const addWalls = (row, col) => {
+    const DIRS = [[-2, 0], [2, 0], [0, -2], [0, 2]];
+    for (const [dr, dc] of DIRS) {
+      const wr = row + dr / 2;
+      const wc = col + dc / 2;
+      const nr = row + dr;
+      const nc = col + dc;
+      if (nr >= 0 && nr < r && nc >= 0 && nc < c && grid[nr][nc] === 1) {
+        walls.push({ from: { row, col }, wall: { row: wr, col: wc }, to: { row: nr, col: nc } });
+      }
+    }
+  };
+
+  addWalls(0, 0);
+
+  while (walls.length > 0) {
+    const idx = rand(walls.length);
+    const { from, wall, to } = walls[idx];
+    walls.splice(idx, 1);
+
+    if (grid[to.row][to.col] === 1) {
+      grid[wall.row][wall.col] = 0;
+      grid[to.row][to.col] = 0;
+      addWalls(to.row, to.col);
+    }
+  }
+
+  const start = { row: 0, col: 0 };
+  const end = { row: r - 1, col: c - 1 };
+  grid[start.row][start.col] = 0;
+  grid[end.row][end.col] = 0;
+
+  return { grid, start, end, rows: r, cols: c };
+}
+
+module.exports = primsAlgorithm;
