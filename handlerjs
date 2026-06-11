@@ -1,0 +1,136 @@
+const { WebSocketServer, OPEN } = require('ws');
+const jwt = require('jsonwebtoken');
+const { runAlgorithm } = require('../algorithms');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+
+const MSG = {
+  STEP: 'step',
+  PATH: 'path',
+  DONE: 'done',
+  ERROR: 'error',
+  PING: 'ping',
+  PONG: 'pong',
+};
+
+/**
+ * Attach a WebSocket server to the existing HTTP server.
+ * Clients send a JSON "solve" message; the server streams back
+ * individual visited cells then the final path.
+ */
+function attachWebSocketServer(httpServer) {
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+  wss.on('connection', (ws, req) => {
+    // Optional auth from query param ?token=...
+    const url = new URL(req.url, 'http://localhost');
+    const token = url.searchParams.get('token');
+    let userId = null;
+    if (token) {
+      try {
+        const payload = jwt.verify(token, JWT_SECRET);
+        userId = payload.sub;
+      } catch (_) {}
+    }
+
+    ws._isAlive = true;
+    ws.on('pong', () => { ws._isAlive = true; });
+
+    ws.on('message', (raw) => {
+      let msg;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return sendError(ws, 'Invalid JSON');
+      }
+
+      if (msg.type === MSG.PING) {
+        return send(ws, { type: MSG.PONG });
+      }
+
+      if (msg.type === 'solve') {
+        handleSolve(ws, msg, userId);
+      }
+    });
+
+    ws.on('error', (err) => console.error('WS error:', err.message));
+  });
+
+  // Heartbeat — close dead connections every 30s
+  const interval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if (!ws._isAlive) return ws.terminate();
+      ws._isAlive = false;
+      ws.ping();
+    });
+  }, 30_000);
+
+  wss.on('close', () => clearInterval(interval));
+
+  return wss;
+}
+
+/**
+ * Stream algorithm steps to the client.
+ * Message sequence: step* → path → done
+ */
+async function handleSolve(ws, msg, _userId) {
+  const { grid, start, end, algorithm, options = {}, stepDelayMs = 0 } = msg;
+
+  // Basic validation
+  if (!grid || !start || !end || !algorithm) {
+    return sendError(ws, 'Missing required fields: grid, start, end, algorithm');
+  }
+
+  const rows = grid.length;
+  const cols = grid[0]?.length || 0;
+  if (rows > 150 || cols > 150) {
+    return sendError(ws, 'Grid too large for WebSocket streaming (max 150×150)');
+  }
+
+  try {
+    const startTime = Date.now();
+    const result = runAlgorithm(algorithm, grid, start, end, { ...options, recordSteps: true });
+    const timeTakenMs = Date.now() - startTime;
+
+    const delay = Math.min(Math.max(Number(stepDelayMs) || 0, 0), 500);
+
+    // Stream visited cells
+    for (const cell of result.visitedOrder) {
+      if (ws.readyState !== OPEN) return;
+      send(ws, { type: MSG.STEP, cell });
+      if (delay > 0) await sleep(delay);
+    }
+
+    // Send final path
+    if (ws.readyState === OPEN) {
+      send(ws, { type: MSG.PATH, path: result.path });
+      send(ws, {
+        type: MSG.DONE,
+        found: result.found,
+        cost: result.cost,
+        nodesExplored: result.nodesExplored,
+        pathLength: result.path.length,
+        timeTakenMs,
+      });
+    }
+  } catch (err) {
+    sendError(ws, err.message);
+  }
+}
+
+function send(ws, payload) {
+  if (ws.readyState === OPEN) {
+    ws.send(JSON.stringify(payload));
+  }
+}
+
+function sendError(ws, message) {
+  send(ws, { type: MSG.ERROR, message });
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+module.exports = { attachWebSocketServer };
