@@ -1,0 +1,54 @@
+const aStar = require('./aStar');
+const dijkstra = require('./dijkstra');
+const bfs = require('./bfs');
+const dfs = require('./dfs');
+const greedyBFS = require('./greedyBFS');
+
+const ALGORITHMS = {
+  astar: aStar,
+  dijkstra,
+  bfs,
+  dfs,
+  greedy: greedyBFS,
+};
+
+const ALGORITHM_META = {
+  astar: {
+    name: 'A*',
+    weighted: true,
+    guaranteed: true,
+    description: 'Optimal heuristic-guided search. Best all-around.',
+  },
+  dijkstra: {
+    name: "Dijkstra's",
+    weighted: true,
+    guaranteed: true,
+    description: 'Optimal weighted search. A* without heuristic.',
+  },
+  bfs: {
+    name: 'Breadth-First Search',
+    weighted: false,
+    guaranteed: true,
+    description: 'Shortest path by step count on unweighted grids.',
+  },
+  dfs: {
+    name: 'Depth-First Search',
+    weighted: false,
+    guaranteed: false,
+    description: 'Fast but NOT guaranteed shortest path.',
+  },
+  greedy: {
+    name: 'Greedy Best-First',
+    weighted: false,
+    guaranteed: false,
+    description: 'Fast heuristic search, not always optimal.',
+  },
+};
+
+function runAlgorithm(name, grid, start, end, options = {}) {
+  const algo = ALGORITHMS[name];
+  if (!algo) throw new Error(`Unknown algorithm: ${name}`);
+  return algo(grid, start, end, options);
+}
+
+module.exports = { ALGORITHMS, ALGORITHM_META, runAlgorithm };
