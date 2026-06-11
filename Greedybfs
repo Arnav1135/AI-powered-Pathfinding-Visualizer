@@ -1,0 +1,73 @@
+const MinHeap = require('./MinHeap');
+const {
+  encode,
+  decode,
+  getNeighbors,
+  reconstructPath,
+  manhattan,
+  euclidean,
+  chebyshev,
+  validateGridInput,
+} = require('./grid');
+
+const HEURISTICS = { manhattan, euclidean, chebyshev };
+
+/**
+ * Greedy Best-First Search.
+ *
+ * Expands nodes purely by heuristic (ignores path cost). Fast but not
+ * guaranteed to find the shortest path.
+ */
+function greedyBFS(grid, start, end, options = {}) {
+  validateGridInput(grid, start, end);
+
+  const {
+    allowDiagonal = false,
+    heuristic = 'manhattan',
+    recordSteps = true,
+  } = options;
+
+  const heuristicFn = HEURISTICS[heuristic] || manhattan;
+  const cols = grid[0].length;
+
+  const startKey = encode(start.row, start.col, cols);
+  const endKey = encode(end.row, end.col, cols);
+
+  const visited = new Set();
+  const cameFrom = new Map();
+  const visitedOrder = [];
+
+  const heap = new MinHeap((a, b) => a.h - b.h);
+  heap.push({ key: startKey, h: heuristicFn(start, end) });
+
+  let nodesExplored = 0;
+
+  while (!heap.isEmpty()) {
+    const { key: currentKey } = heap.pop();
+    if (visited.has(currentKey)) continue;
+
+    visited.add(currentKey);
+    nodesExplored++;
+
+    const current = decode(currentKey, cols);
+    if (recordSteps) visitedOrder.push(current);
+
+    if (currentKey === endKey) {
+      const path = reconstructPath(cameFrom, endKey, cols);
+      return { path, visitedOrder, cost: path.length - 1, found: true, nodesExplored };
+    }
+
+    const neighbors = getNeighbors(grid, current.row, current.col, allowDiagonal);
+    for (const neighbor of neighbors) {
+      const neighborKey = encode(neighbor.row, neighbor.col, cols);
+      if (!visited.has(neighborKey)) {
+        cameFrom.set(neighborKey, currentKey);
+        heap.push({ key: neighborKey, h: heuristicFn(neighbor, end) });
+      }
+    }
+  }
+
+  return { path: [], visitedOrder, cost: Infinity, found: false, nodesExplored };
+}
+
+module.exports = greedyBFS;
