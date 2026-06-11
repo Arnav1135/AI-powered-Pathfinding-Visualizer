@@ -1,0 +1,98 @@
+const express = require('express');
+const { body } = require('express-validator');
+const SavedMaze = require('../models/SavedMaze');
+const { requireAuth, optionalAuth } = require('../middleware/auth');
+const { validate } = require('../middleware/validators');
+
+const router = express.Router();
+
+// GET /api/mazes — list current user's mazes
+router.get('/', requireAuth, async (req, res) => {
+  const mazes = await SavedMaze.find({ owner: req.user._id })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .select('-grid');
+  res.json(mazes);
+});
+
+// GET /api/mazes/public — list public mazes
+router.get('/public', async (req, res) => {
+  const mazes = await SavedMaze.find({ isPublic: true })
+    .sort({ playCount: -1 })
+    .limit(20)
+    .populate('owner', 'username')
+    .select('-grid');
+  res.json(mazes);
+});
+
+// GET /api/mazes/:shareId — load maze by share ID (public or owner)
+router.get('/:shareId', optionalAuth, async (req, res) => {
+  const maze = await SavedMaze.findOne({ shareId: req.params.shareId }).populate(
+    'owner',
+    'username'
+  );
+  if (!maze) return res.status(404).json({ error: 'Maze not found' });
+
+  const isOwner = req.user && String(req.user._id) === String(maze.owner._id);
+  if (!maze.isPublic && !isOwner) {
+    return res.status(403).json({ error: 'This maze is private' });
+  }
+
+  // Increment play count for non-owner views
+  if (!isOwner) {
+    maze.playCount += 1;
+    await maze.save();
+  }
+
+  res.json(maze);
+});
+
+// POST /api/mazes — save a maze
+router.post(
+  '/',
+  requireAuth,
+  [
+    body('title').optional().trim().isLength({ max: 60 }),
+    body('grid').isArray({ min: 1 }),
+    body('rows').isInt({ min: 3 }),
+    body('cols').isInt({ min: 3 }),
+    body('start.row').isInt({ min: 0 }),
+    body('start.col').isInt({ min: 0 }),
+    body('end.row').isInt({ min: 0 }),
+    body('end.col').isInt({ min: 0 }),
+    body('isPublic').optional().isBoolean(),
+  ],
+  validate,
+  async (req, res) => {
+    try {
+      const { title, grid, rows, cols, start, end, isPublic, tags } = req.body;
+      const maze = await SavedMaze.create({
+        title,
+        grid,
+        rows,
+        cols,
+        start,
+        end,
+        isPublic: Boolean(isPublic),
+        tags,
+        owner: req.user._id,
+      });
+      res.status(201).json({ shareId: maze.shareId, id: maze._id });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// DELETE /api/mazes/:shareId — delete own maze
+router.delete('/:shareId', requireAuth, async (req, res) => {
+  const maze = await SavedMaze.findOne({ shareId: req.params.shareId });
+  if (!maze) return res.status(404).json({ error: 'Maze not found' });
+  if (String(maze.owner) !== String(req.user._id)) {
+    return res.status(403).json({ error: 'Not your maze' });
+  }
+  await maze.deleteOne();
+  res.json({ ok: true });
+});
+
+module.exports = router;
