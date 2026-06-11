@@ -1,0 +1,85 @@
+/**
+ * Recursive Backtracker (perfect maze).
+ *
+ * Produces a perfect maze (exactly one path between any two cells).
+ * Uses iterative DFS with a stack to avoid call-stack overflow.
+ *
+ * @param {number} rows  - must be odd for clean corridors
+ * @param {number} cols  - must be odd for clean corridors
+ * @param {object} [opts]
+ * @param {number} [opts.seed] - deterministic generation (simple LCG)
+ * @returns {{ grid: number[][], start: {row,col}, end: {row,col} }}
+ */
+function recursiveBacktracker(rows, cols, opts = {}) {
+  // Ensure odd dimensions for proper wall/cell alternation
+  const r = rows % 2 === 0 ? rows - 1 : rows;
+  const c = cols % 2 === 0 ? cols - 1 : cols;
+
+  // Start with all walls (1)
+  const grid = Array.from({ length: r }, () => new Array(c).fill(1));
+
+  // Seeded pseudo-random (LCG) for reproducibility
+  let seed = opts.seed ?? Date.now();
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+    return (seed >>> 0) / 0xffffffff;
+  };
+
+  const shuffle = (arr) => {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+
+  // Cell coordinates are on even indices (0, 2, 4, …)
+  const startRow = 0;
+  const startCol = 0;
+
+  const visited = new Set();
+  const stack = [{ row: startRow, col: startCol }];
+  visited.add(`${startRow},${startCol}`);
+  grid[startRow][startCol] = 0;
+
+  const DIRS = [
+    { dr: -2, dc: 0 },
+    { dr: 2, dc: 0 },
+    { dr: 0, dc: -2 },
+    { dr: 0, dc: 2 },
+  ];
+
+  while (stack.length > 0) {
+    const current = stack[stack.length - 1];
+    const dirs = shuffle([...DIRS]);
+    let moved = false;
+
+    for (const { dr, dc } of dirs) {
+      const nr = current.row + dr;
+      const nc = current.col + dc;
+      const key = `${nr},${nc}`;
+
+      if (nr >= 0 && nr < r && nc >= 0 && nc < c && !visited.has(key)) {
+        // Carve wall between current and neighbor
+        grid[(current.row + nr) >> 1][(current.col + nc) >> 1] = 0;
+        grid[nr][nc] = 0;
+        visited.add(key);
+        stack.push({ row: nr, col: nc });
+        moved = true;
+        break;
+      }
+    }
+
+    if (!moved) stack.pop();
+  }
+
+  // Place start (top-left) and end (bottom-right) on open cells
+  const start = { row: 0, col: 0 };
+  const end = { row: r - 1, col: c - 1 };
+  grid[start.row][start.col] = 0;
+  grid[end.row][end.col] = 0;
+
+  return { grid, start, end, rows: r, cols: c };
+}
+
+module.exports = recursiveBacktracker;
