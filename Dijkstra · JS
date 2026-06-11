@@ -1,0 +1,105 @@
+const MinHeap = require('./MinHeap');
+const {
+  encode,
+  decode,
+  getNeighbors,
+  getCost,
+  reconstructPath,
+  validateGridInput,
+} = require('./grid');
+
+/**
+ * Dijkstra's Algorithm.
+ *
+ * Finds the guaranteed shortest path from `start` to `end` on a weighted
+ * grid without using a heuristic. Equivalent to A* with heuristic = 0.
+ * Useful as a baseline / "ground truth" comparison against A*.
+ *
+ * @param {number[][]} grid
+ * @param {{row:number, col:number}} start
+ * @param {{row:number, col:number}} end
+ * @param {object} [options]
+ * @param {boolean} [options.allowDiagonal=false]
+ * @param {boolean} [options.recordSteps=true]
+ *
+ * @returns {{
+ *   path: {row:number, col:number}[],
+ *   visitedOrder: {row:number, col:number}[],
+ *   cost: number,
+ *   found: boolean,
+ *   nodesExplored: number,
+ * }}
+ */
+function dijkstra(grid, start, end, options = {}) {
+  validateGridInput(grid, start, end);
+
+  const { allowDiagonal = false, recordSteps = true } = options;
+  const cols = grid[0].length;
+
+  const startKey = encode(start.row, start.col, cols);
+  const endKey = encode(end.row, end.col, cols);
+
+  const dist = new Map([[startKey, 0]]);
+  const cameFrom = new Map();
+  const visitedOrder = [];
+  const visited = new Set();
+
+  const heap = new MinHeap((a, b) => a.dist - b.dist);
+  heap.push({ key: startKey, dist: 0 });
+
+  let nodesExplored = 0;
+
+  while (!heap.isEmpty()) {
+    const { key: currentKey } = heap.pop();
+
+    if (visited.has(currentKey)) continue;
+    visited.add(currentKey);
+    nodesExplored++;
+
+    const current = decode(currentKey, cols);
+    if (recordSteps) visitedOrder.push(current);
+
+    if (currentKey === endKey) {
+      return {
+        path: reconstructPath(cameFrom, endKey, cols),
+        visitedOrder,
+        cost: dist.get(endKey),
+        found: true,
+        nodesExplored,
+      };
+    }
+
+    const neighbors = getNeighbors(grid, current.row, current.col, allowDiagonal);
+
+    for (const neighbor of neighbors) {
+      const neighborKey = encode(neighbor.row, neighbor.col, cols);
+      if (visited.has(neighborKey)) continue;
+
+      const moveCost = getCost(
+        grid,
+        neighbor.row,
+        neighbor.col,
+        allowDiagonal,
+        current.row,
+        current.col
+      );
+      const newDist = dist.get(currentKey) + moveCost;
+
+      if (newDist < (dist.get(neighborKey) ?? Infinity)) {
+        dist.set(neighborKey, newDist);
+        cameFrom.set(neighborKey, currentKey);
+        heap.push({ key: neighborKey, dist: newDist });
+      }
+    }
+  }
+
+  return {
+    path: [],
+    visitedOrder,
+    cost: Infinity,
+    found: false,
+    nodesExplored,
+  };
+}
+
+module.exports = dijkstra;
