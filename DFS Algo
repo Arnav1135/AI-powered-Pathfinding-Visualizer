@@ -1,0 +1,67 @@
+const {
+  encode,
+  decode,
+  getNeighbors,
+  getCost,
+  reconstructPath,
+  validateGridInput,
+} = require('./grid');
+
+/**
+ * Depth-First Search.
+ *
+ * NOT guaranteed to find the shortest path. Useful for visualizing the
+ * contrast with BFS / Dijkstra / A*. Uses an explicit stack to avoid
+ * call-stack overflow on large grids.
+ */
+function dfs(grid, start, end, options = {}) {
+  validateGridInput(grid, start, end);
+
+  const { allowDiagonal = false, recordSteps = true } = options;
+  const cols = grid[0].length;
+
+  const startKey = encode(start.row, start.col, cols);
+  const endKey = encode(end.row, end.col, cols);
+
+  const visited = new Set();
+  const cameFrom = new Map();
+  const visitedOrder = [];
+  const stack = [startKey];
+
+  let nodesExplored = 0;
+
+  while (stack.length > 0) {
+    const currentKey = stack.pop();
+    if (visited.has(currentKey)) continue;
+
+    visited.add(currentKey);
+    nodesExplored++;
+
+    const current = decode(currentKey, cols);
+    if (recordSteps) visitedOrder.push(current);
+
+    if (currentKey === endKey) {
+      const path = reconstructPath(cameFrom, endKey, cols);
+      return {
+        path,
+        visitedOrder,
+        cost: path.length - 1,
+        found: true,
+        nodesExplored,
+      };
+    }
+
+    const neighbors = getNeighbors(grid, current.row, current.col, allowDiagonal);
+    for (const neighbor of neighbors) {
+      const neighborKey = encode(neighbor.row, neighbor.col, cols);
+      if (!visited.has(neighborKey)) {
+        cameFrom.set(neighborKey, currentKey);
+        stack.push(neighborKey);
+      }
+    }
+  }
+
+  return { path: [], visitedOrder, cost: Infinity, found: false, nodesExplored };
+}
+
+module.exports = dfs;
